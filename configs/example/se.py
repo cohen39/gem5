@@ -157,10 +157,52 @@ else:
 
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(args)
 CPUClass.numThreads = numThreads
-print(CPUClass.issueWidth)
-CPUClass.issueWidth = args.issue_width
-CPUClass.backComSize = 10
-CPUClass.forwardComSize = 10
+issue_width = int(args.issue_width)
+#print('Issue Width Parameter: %i' % args.issue_width)
+if args.cpu_type == "DerivO3CPU":
+    CPUClass.issueWidth = issue_width
+    CPUClass.fetchWidth = 12 #Max fetchwidth
+    CPUClass.decodeWidth = 12 #Max decodewidth
+    CPUClass.squashWidth = issue_width*100 #arbitrary large avoid bottlenecks
+    CPUClass.backComSize = 10 #Double default value to avoid simulation faults
+    CPUClass.forwardComSize = 10 #^
+else:
+    #base on instructor's reply here
+    #https://piazza.com/class/kxy7kv74xrw1sc?cid=24
+    base_width = 2
+    scale = issue_width / base_width
+    CPUClass.fetch1FetchLimit = scale * 1
+    CPUClass.fetch2InputBufferSize = scale * 2
+    CPUClass.decodeInputBufferSize = scale * 3
+    CPUClass.decodeInputWidth = issue_width
+    CPUClass.executeInputWidth = issue_width
+    CPUClass.executeIssueLimit = issue_width
+    CPUClass.executeMemoryIssueLimit = scale * 1
+    CPUClass.executeCommitLimit = issue_width
+    CPUClass.executeMemoryCommitLimit = scale * 1
+    CPUClass.executeInputBufferSize = scale * 7
+    CPUClass.executeMaxAccessesInMemory = scale * 5
+    CPUClass.executeLSQRequestsQueueSize = scale * 1
+    CPUClass.executeLSQTransfersQueueSize = scale * 2
+    CPUClass.executeLSQStoreBufferSize = scale * 5
+
+    #Arbitrarily large number.
+    #Idea is to make decodeInputWidth the only bottleneck.
+    #scale = 100
+    #CPUClass.fetch1FetchLimit = scale * 1
+    #CPUClass.fetch2InputBufferSize = scale * 2
+    #CPUClass.decodeInputBufferSize = scale * 3
+    #CPUClass.decodeInputWidth = issue_width
+    #CPUClass.executeInputWidth = 100*issue_width
+    #CPUClass.executeIssueLimit = 100*issue_width
+    #CPUClass.executeMemoryIssueLimit = scale * 1
+    #CPUClass.executeCommitLimit = 100*issue_width
+    #CPUClass.executeMemoryCommitLimit = scale * 1
+    #CPUClass.executeInputBufferSize = scale * 7
+    #CPUClass.executeMaxAccessesInMemory = scale * 5
+    #CPUClass.executeLSQRequestsQueueSize = scale * 1
+    #CPUClass.executeLSQTransfersQueueSize = scale * 2
+    #CPUClass.executeLSQStoreBufferSize = scale * 5
 
 # Check -- do not allow SMT with multiple CPUs
 if args.smt and args.num_cpus > 1:
