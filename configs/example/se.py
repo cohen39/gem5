@@ -157,6 +157,8 @@ else:
 
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(args)
 CPUClass.numThreads = numThreads
+print(CPUClass.issueWidth)
+CPUClass.issueWidth = args.issue_width
 
 # Check -- do not allow SMT with multiple CPUs
 if args.smt and args.num_cpus > 1:
