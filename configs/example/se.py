@@ -159,6 +159,8 @@ else:
 CPUClass.numThreads = numThreads
 print(CPUClass.issueWidth)
 CPUClass.issueWidth = args.issue_width
+CPUClass.backComSize = 10
+CPUClass.forwardComSize = 10
 
 # Check -- do not allow SMT with multiple CPUs
 if args.smt and args.num_cpus > 1:
