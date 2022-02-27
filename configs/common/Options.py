@@ -153,6 +153,13 @@ def addNoISAOptions(parser):
     parser.add_argument("--l2_assoc", type=int, default=8)
     parser.add_argument("--l3_assoc", type=int, default=16)
     parser.add_argument("--cacheline_size", type=int, default=64)
+    parser.add_option("--l1d_repl", type="choice", default="LRURP",
+                      choices=ObjectList.repl_list.get_names(),
+                      help = "replacement policy for l1")
+
+    parser.add_option("--l2_repl", type="choice", default="LRURP",
+                      choices=ObjectList.repl_list.get_names(),
+                      help = "replacement policy for l2")
 
     # Enable Ruby
     parser.add_argument("--ruby", action="store_true")
@@ -380,7 +387,8 @@ def addCommonOptions(parser):
     # Fastforwarding and simpoint related materials
     parser.add_argument(
         "-W", "--warmup-insts", action="store", type=int, default=None,
-        help="Warmup period in total instructions (requires --standard-switch)")
+        help=\
+        "Warmup period in total instructions (requires --standard-switch)")
     parser.add_argument(
         "--bench", action="store", type=str, default=None,
         help="base names for --take-checkpoint and --checkpoint-restore")
