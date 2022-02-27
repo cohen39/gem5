@@ -56,7 +56,7 @@
 #include "debug/HtmCpu.hh"
 #include "debug/LSQ.hh"
 #include "debug/Writeback.hh"
-#include "params/O3CPU.hh"
+#include "params/BaseO3CPU.hh"
 
 namespace gem5
 {
@@ -68,7 +68,7 @@ LSQ::DcachePort::DcachePort(LSQ *_lsq, CPU *_cpu) :
     RequestPort(_cpu->name() + ".dcache_port", _cpu), lsq(_lsq), cpu(_cpu)
 {}
 
-LSQ::LSQ(CPU *cpu_ptr, IEW *iew_ptr, const O3CPUParams &params)
+LSQ::LSQ(CPU *cpu_ptr, IEW *iew_ptr, const BaseO3CPUParams &params)
     : cpu(cpu_ptr), iewStage(iew_ptr),
       _cacheBlocked(false),
       cacheStorePorts(params.cacheStorePorts), usedStorePorts(0),
@@ -1089,6 +1089,23 @@ LSQ::LSQRequest::addReq(Addr addr, unsigned size,
                 _inst->pcState().instAddr(), _inst->contextId(),
                 std::move(_amo_op));
         req->setByteEnable(byte_enable);
+
+        /* If the request is marked as NO_ACCESS, setup a local access */
+        if (_flags.isSet(Request::NO_ACCESS)) {
+            req->setLocalAccessor(
+                [this, req](gem5::ThreadContext *tc, PacketPtr pkt) -> Cycles
+                {
+                    if ((req->isHTMStart() || req->isHTMCommit())) {
+                        auto& inst = this->instruction();
+                        assert(inst->inHtmTransactionalState());
+                        pkt->setHtmTransactional(
+                            inst->getHtmTransactionUid());
+                    }
+                    return Cycles(1);
+                }
+            );
+        }
+
         _reqs.push_back(req);
     }
 }

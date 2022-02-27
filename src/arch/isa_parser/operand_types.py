@@ -76,6 +76,7 @@ class Operand(object):
         }''' % (self.dflt_ctype, self.base_name, code)
 
     def __init__(self, parser, full_name, ext, is_src, is_dest):
+        self.parser = parser
         self.full_name = full_name
         self.ext = ext
         self.is_src = is_src
@@ -202,16 +203,16 @@ class IntRegOperand(Operand):
         if (self.ctype == 'float' or self.ctype == 'double'):
             error('Attempt to read integer register as FP')
         if self.read_code != None:
-            return self.buildReadCode(predRead, 'readIntRegOperand')
+            return self.buildReadCode(predRead, 'getRegOperand')
 
         int_reg_val = ''
         if predRead:
-            int_reg_val = 'xc->readIntRegOperand(this, _sourceIndex++)'
+            int_reg_val = 'xc->getRegOperand(this, _sourceIndex++)'
             if self.hasReadPred():
                 int_reg_val = '(%s) ? %s : 0' % \
                               (self.read_predicate, int_reg_val)
         else:
-            int_reg_val = 'xc->readIntRegOperand(this, %d)' % self.src_reg_idx
+            int_reg_val = 'xc->getRegOperand(this, %d)' % self.src_reg_idx
 
         return '%s = %s;\n' % (self.base_name, int_reg_val)
 
@@ -219,7 +220,7 @@ class IntRegOperand(Operand):
         if (self.ctype == 'float' or self.ctype == 'double'):
             error('Attempt to write integer register as FP')
         if self.write_code != None:
-            return self.buildWriteCode(predWrite, 'setIntRegOperand')
+            return self.buildWriteCode(predWrite, 'setRegOperand')
 
         if predWrite:
             wp = 'true'
@@ -236,7 +237,7 @@ class IntRegOperand(Operand):
         %s
         {
             %s final_val = %s;
-            xc->setIntRegOperand(this, %s, final_val);\n
+            xc->setRegOperand(this, %s, final_val);\n
             if (traceData) { traceData->setData(final_val); }
         }''' % (wcond, self.ctype, self.base_name, windex)
 
@@ -266,14 +267,14 @@ class FloatRegOperand(Operand):
 
     def makeRead(self, predRead):
         if self.read_code != None:
-            return self.buildReadCode(predRead, 'readFloatRegOperandBits')
+            return self.buildReadCode(predRead, 'getRegOperand')
 
         if predRead:
             rindex = '_sourceIndex++'
         else:
             rindex = '%d' % self.src_reg_idx
 
-        code = 'xc->readFloatRegOperandBits(this, %s)' % rindex
+        code = 'xc->getRegOperand(this, %s)' % rindex
         if self.ctype == 'float':
             code = 'bitsToFloat32(%s)' % code
         elif self.ctype == 'double':
@@ -282,7 +283,7 @@ class FloatRegOperand(Operand):
 
     def makeWrite(self, predWrite):
         if self.write_code != None:
-            return self.buildWriteCode(predWrite, 'setFloatRegOperandBits')
+            return self.buildWriteCode(predWrite, 'setRegOperand')
 
         if predWrite:
             wp = '_destIndex++'
@@ -295,7 +296,7 @@ class FloatRegOperand(Operand):
         elif self.ctype == 'double':
             val = 'floatToBits64(%s)' % val
 
-        wp = 'xc->setFloatRegOperandBits(this, %s, %s);' % (wp, val)
+        wp = 'xc->setRegOperand(this, %s, %s);' % (wp, val)
 
         wb = '''
         {
@@ -311,7 +312,6 @@ class VecRegOperand(Operand):
     def __init__(self, parser, full_name, ext, is_src, is_dest):
         Operand.__init__(self, parser, full_name, ext, is_src, is_dest)
         self.elemExt = None
-        self.parser = parser
 
     def isReg(self):
         return 1
@@ -369,7 +369,7 @@ class VecRegOperand(Operand):
         return c_read
 
     def makeReadW(self, predWrite):
-        func = 'getWritableVecRegOperand'
+        func = 'getWritableRegOperand'
         if self.read_code != None:
             return self.buildReadCode(predWrite, func)
 
@@ -378,8 +378,9 @@ class VecRegOperand(Operand):
         else:
             rindex = '%d' % self.dest_reg_idx
 
-        c_readw = '\t\t%s& tmp_d%s = xc->%s(this, %s);\n'\
-                % ('TheISA::VecRegContainer', rindex, func, rindex)
+        c_readw = f'\t\tauto &tmp_d{rindex} = \n' \
+                  f'\t\t    *({self.parser.namespace}::VecRegContainer *)\n' \
+                  f'\t\t    xc->{func}(this, {rindex});\n'
         if self.elemExt:
             c_readw += '\t\tauto %s = tmp_d%s.as<%s>();\n' % (self.base_name,
                         rindex, self.parser.operandTypeMap[self.elemExt])
@@ -407,7 +408,7 @@ class VecRegOperand(Operand):
         return c_read
 
     def makeRead(self, predRead):
-        func = 'readVecRegOperand'
+        func = 'getRegOperand'
         if self.read_code != None:
             return self.buildReadCode(predRead, func)
 
@@ -420,8 +421,9 @@ class VecRegOperand(Operand):
         if self.is_dest and self.is_src:
             name += '_merger'
 
-        c_read =  '\t\t%s& tmp_s%s = xc->%s(this, %s);\n' \
-                % ('const TheISA::VecRegContainer', rindex, func, rindex)
+        c_read = f'\t\t{self.parser.namespace}::VecRegContainer ' \
+                 f'\t\t        tmp_s{rindex};\n' \
+                 f'\t\txc->{func}(this, {rindex}, &tmp_s{rindex});\n'
         # If the parser has detected that elements are being access, create
         # the appropriate view
         if self.elemExt:
@@ -437,7 +439,7 @@ class VecRegOperand(Operand):
         return c_read
 
     def makeWrite(self, predWrite):
-        func = 'setVecRegOperand'
+        func = 'setRegOperand'
         if self.write_code != None:
             return self.buildWriteCode(predWrite, func)
 
@@ -475,44 +477,35 @@ class VecElemOperand(Operand):
         numAccessNeeded = 1
 
         if self.is_src:
-            c_src = ('\n\tsetSrcRegIdx(_numSrcRegs++, RegId(%s, %s, %s));' %
-                    (self.reg_class, self.reg_spec, self.elem_spec))
+            c_src = ('\n\tsetSrcRegIdx(_numSrcRegs++, RegId(%s, %s));' %
+                    (self.reg_class, self.reg_spec))
 
         if self.is_dest:
-            c_dest = ('\n\tsetDestRegIdx(_numDestRegs++, RegId(%s, %s, %s));' %
-                    (self.reg_class, self.reg_spec, self.elem_spec))
+            c_dest = ('\n\tsetDestRegIdx(_numDestRegs++, RegId(%s, %s));' %
+                    (self.reg_class, self.reg_spec))
             c_dest += '\n\t_numVecElemDestRegs++;'
         return c_src + c_dest
 
     def makeRead(self, predRead):
-        c_read = 'xc->readVecElemOperand(this, %d)' % self.src_reg_idx
+        c_read = f'xc->getRegOperand(this, {self.src_reg_idx})'
 
         if self.ctype == 'float':
-            c_read = 'bitsToFloat32(%s)' % c_read
+            c_read = f'bitsToFloat32({c_read})'
         elif self.ctype == 'double':
-            c_read = 'bitsToFloat64(%s)' % c_read
+            c_read = f'bitsToFloat64({c_read})'
 
-        return '\n\t%s %s = %s;\n' % (self.ctype, self.base_name, c_read)
+        return f'\n\t{self.ctype} {self.base_name} = {c_read};\n'
 
     def makeWrite(self, predWrite):
+        val = self.base_name
         if self.ctype == 'float':
-            c_write = 'floatToBits32(%s)' % self.base_name
+            val = f'floatToBits32({val})'
         elif self.ctype == 'double':
-            c_write = 'floatToBits64(%s)' % self.base_name
-        else:
-            c_write = self.base_name
-
-        c_write = ('\n\txc->setVecElemOperand(this, %d, %s);' %
-                  (self.dest_reg_idx, c_write))
-
-        return c_write
+            val = f'floatToBits64({val})'
+        return f'\n\txc->setRegOperand(this, {self.dest_reg_idx}, {val});'
 
 class VecPredRegOperand(Operand):
     reg_class = 'VecPredRegClass'
-
-    def __init__(self, parser, full_name, ext, is_src, is_dest):
-        Operand.__init__(self, parser, full_name, ext, is_src, is_dest)
-        self.parser = parser
 
     def isReg(self):
         return 1
@@ -537,7 +530,7 @@ class VecPredRegOperand(Operand):
         return c_src + c_dest
 
     def makeRead(self, predRead):
-        func = 'readVecPredRegOperand'
+        func = 'getRegOperand'
         if self.read_code != None:
             return self.buildReadCode(predRead, func)
 
@@ -546,16 +539,17 @@ class VecPredRegOperand(Operand):
         else:
             rindex = '%d' % self.src_reg_idx
 
-        c_read =  '\t\t%s& tmp_s%s = xc->%s(this, %s);\n' % (
-                'const TheISA::VecPredRegContainer', rindex, func, rindex)
+        c_read =  f'\t\t{self.parser.namespace}::VecPredRegContainer ' \
+                  f'\t\t        tmp_s{rindex}; ' \
+                  f'xc->{func}(this, {rindex}, &tmp_s{rindex});\n'
         if self.ext:
-            c_read += '\t\tauto %s = tmp_s%s.as<%s>();\n' % (
-                    self.base_name, rindex,
-                    self.parser.operandTypeMap[self.ext])
+            c_read += f'\t\tauto {self.base_name} = ' \
+                      f'tmp_s{rindex}.as<' \
+                      f'{self.parser.operandTypeMap[self.ext]}>();\n'
         return c_read
 
     def makeReadW(self, predWrite):
-        func = 'getWritableVecPredRegOperand'
+        func = 'getWritableRegOperand'
         if self.read_code != None:
             return self.buildReadCode(predWrite, func)
 
@@ -564,8 +558,9 @@ class VecPredRegOperand(Operand):
         else:
             rindex = '%d' % self.dest_reg_idx
 
-        c_readw = '\t\t%s& tmp_d%s = xc->%s(this, %s);\n' % (
-                'TheISA::VecPredRegContainer', rindex, func, rindex)
+        c_readw = f'\t\tauto &tmp_d{rindex} = \n' \
+                  f'\t\t    *({self.parser.namespace}::' \
+                  f'VecPredRegContainer *)xc->{func}(this, {rindex});\n'
         if self.ext:
             c_readw += '\t\tauto %s = tmp_d%s.as<%s>();\n' % (
                     self.base_name, rindex,
@@ -573,7 +568,7 @@ class VecPredRegOperand(Operand):
         return c_readw
 
     def makeWrite(self, predWrite):
-        func = 'setVecPredRegOperand'
+        func = 'setRegOperand'
         if self.write_code != None:
             return self.buildWriteCode(predWrite, func)
 
@@ -621,16 +616,16 @@ class CCRegOperand(Operand):
         if (self.ctype == 'float' or self.ctype == 'double'):
             error('Attempt to read condition-code register as FP')
         if self.read_code != None:
-            return self.buildReadCode(predRead, 'readCCRegOperand')
+            return self.buildReadCode(predRead, 'getRegOperand')
 
         int_reg_val = ''
         if predRead:
-            int_reg_val = 'xc->readCCRegOperand(this, _sourceIndex++)'
+            int_reg_val = 'xc->getRegOperand(this, _sourceIndex++)'
             if self.hasReadPred():
                 int_reg_val = '(%s) ? %s : 0' % \
                               (self.read_predicate, int_reg_val)
         else:
-            int_reg_val = 'xc->readCCRegOperand(this, %d)' % self.src_reg_idx
+            int_reg_val = 'xc->getRegOperand(this, %d)' % self.src_reg_idx
 
         return '%s = %s;\n' % (self.base_name, int_reg_val)
 
@@ -638,7 +633,7 @@ class CCRegOperand(Operand):
         if (self.ctype == 'float' or self.ctype == 'double'):
             error('Attempt to write condition-code register as FP')
         if self.write_code != None:
-            return self.buildWriteCode(predWrite, 'setCCRegOperand')
+            return self.buildWriteCode(predWrite, 'setRegOperand')
 
         if predWrite:
             wp = 'true'
@@ -655,7 +650,7 @@ class CCRegOperand(Operand):
         %s
         {
             %s final_val = %s;
-            xc->setCCRegOperand(this, %s, final_val);\n
+            xc->setRegOperand(this, %s, final_val);\n
             if (traceData) { traceData->setData(final_val); }
         }''' % (wcond, self.ctype, self.base_name, windex)
 
