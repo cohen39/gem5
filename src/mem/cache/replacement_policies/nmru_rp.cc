@@ -40,10 +40,12 @@ namespace gem5
 GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
 namespace replacement_policy
 {
+static Tick stat_lastTouchTick;
 
 NMRU::NMRU(const Params &p)
   : Base(p)
 {
+    stat_lastTouchTick = Tick(0);
 }
 
 void
@@ -58,16 +60,22 @@ void
 NMRU::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Update last touch timestamp
+    Tick thisTick = curTick();
+
     std::static_pointer_cast<NMRUReplData>(
-        replacement_data)->lastTouchTick = curTick();
+        replacement_data)->lastTouchTick = thisTick;
+    stat_lastTouchTick = thisTick;
 }
 
 void
 NMRU::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Set last touch timestamp
+    Tick thisTick = curTick();
+
     std::static_pointer_cast<NMRUReplData>(
-        replacement_data)->lastTouchTick = curTick();
+        replacement_data)->lastTouchTick = thisTick;
+    stat_lastTouchTick = thisTick;
 }
 
 ReplaceableEntry*
@@ -75,16 +83,27 @@ NMRU::getVictim(const ReplacementCandidates& candidates) const
 {
     // There must be at least one replacement candidate
     assert(candidates.size() > 0);
-
-    // Visit all candidates to find victim
     ReplaceableEntry* victim = candidates[0];
+
+    // Visit all candidates to search for an invalid entry. If one is found,
+    // its eviction is prioritized
+    for (const auto& candidate : candidates) {
+        if (std::static_pointer_cast<NMRUReplData>(
+                    candidate->replacementData)->lastTouchTick == Tick(0))
+        {
+            victim = candidate;
+            return victim;
+        }
+    }
+
+    // Visit all candidates to find first nmru victim
     for (const auto& candidate : candidates) {
         // Update victim entry if necessary
-        if (std::static_pointer_cast<NMRUReplData>(
-                    candidate->replacementData)->lastTouchTick <
-                std::static_pointer_cast<NMRUReplData>(
-                    victim->replacementData)->lastTouchTick) {
+        if (std::static_pointer_cast<NMRUReplData>(candidate->replacementData)->lastTouchTick
+            != stat_lastTouchTick)
+        {
             victim = candidate;
+            return victim;
         }
     }
 

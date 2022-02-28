@@ -49,11 +49,14 @@ namespace replacement_policy
 class NMRU : public Base
 {
   protected:
+    Tick lastTouchTick;
+
     /** NMRU-specific implementation of replacement data. */
     struct NMRUReplData : ReplacementData
     {
         /** Tick on which the entry was last touched. */
         Tick lastTouchTick;
+        bool mru;
 
         /**
          * Default constructor. Invalidate data.
@@ -73,7 +76,7 @@ class NMRU : public Base
      * @param replacement_data Replacement data to be invalidated.
      */
     void invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
-                                                                    override;
+                                                                          override;
 
     /**
      * Touch an entry to update its replacement data.
